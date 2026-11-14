@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Account details</title><link rel="stylesheet" href="style.css"></head>
+<body><main>
+<h1 id="shop">&nbsp;</h1>
+<p class="sub">Your account is open. Fill in your details so we can keep track of it.</p>
+<form id="f" class="panel">
+<div class="plans" id="plans"></div>
+<label>Telegram username<input name="tg" placeholder="@username" required></label>
+<label>Email<input name="email" type="email" required></label>
+<label>Profile name<input name="profile" required></label>
+<label>Password<input name="password" required></label>
+<label>Device brand<input name="device" placeholder="Samsung, iPhone, Smart TV..." required></label>
+<label>Date of purchase<input name="purchased" type="date" required></label>
+<label>Location<input name="loc" placeholder="City / province" required></label>
+<input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+<button>Send details</button><p id="msg"></p>
+</form>
+<div id="done" class="panel" hidden><b>Details received.</b><br>You can close this page now.</div>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+(async()=>{
+  try{
+    const s=await(await fetch("/api/settings")).json();
+    $("#shop").textContent=s.name;document.title=s.name;
+    const q=new URLSearchParams(location.search).get("plan");
+    $("#plans").innerHTML=Object.entries(s.plans).map(function(e,i){var k=e[0],p=e[1];return '<label class="plan"><input type="radio" name="plan" value="'+k+'" '+((q?q===k:i===0)?'checked':'')+'><span>'+p.label+'<b>₱'+p.price+'</b></span></label>'}).join("");
+  }catch(e){$("#msg").textContent="Could not load the form. Refresh the page."}
+})();
+$("#f").onsubmit=async e=>{
+  e.preventDefault();$("#msg").textContent="Sending...";
+  try{
+    const r=await fetch("/api/report",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});
+    if(!r.ok)throw 0;
+    e.target.hidden=true;$("#done").hidden=false;
+  }catch(x){$("#msg").textContent="Could not send. Check your connection and try again."}
+};
+</script></body></html>
