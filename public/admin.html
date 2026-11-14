@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Owner</title><meta name="robots" content="noindex"><link rel="stylesheet" href="style.css"></head>
+<body><main>
+<section id="login" class="panel" hidden>
+<h1>Owner login</h1>
+<label>Password<input id="pw" type="password" autocomplete="current-password"></label>
+<button id="go">Log in</button><p id="err"></p>
+</section>
+<section id="app" hidden>
+<h1 id="title">Tracker</h1>
+<div class="panel"><label>Shop name<input id="name" maxlength="40"></label>
+<div class="bar"><button id="saveName">Save name</button><button class="ghost" id="out">Log out</button></div>
+<button class="ghost" id="hook" style="margin-top:8px">Connect Telegram bot</button><p id="hookmsg"></p></div>
+<div class="stats">
+<div class="stat"><b id="sTotal">0</b><span>Total sales</span></div>
+<div class="stat"><b id="sMonth">0</b><span>This month</span></div>
+<div class="stat"><b id="sToday">0</b><span>Orders today</span></div>
+<div class="stat"><b id="sSplit">0 / 0</b><span>Share / Solo</span></div>
+</div>
+<div class="bar">
+<select id="flt" aria-label="Filter"><option value="">All</option><option>Active</option><option>Expired</option><option>Cancelled</option></select>
+<button class="ghost" id="csv">Export CSV</button></div>
+<div id="list"></div>
+</section>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const peso=n=>"₱"+n.toLocaleString();
+let tok=localStorage.getItem("tk")||"",orders=[],plans={};
+const dt=o=>o.purchased||new Date(o.created).toISOString().slice(0,10);
+const api=async(p,body)=>{
+  const r=await fetch("/api/"+p,{method:body?"POST":"GET",headers:{"content-type":"application/json",authorization:"Bearer "+tok},body:body?JSON.stringify(body):undefined});
+  if(r.status===401&&tok){logout();throw 0}
+  return r.json();
+};
+function logout(){tok="";localStorage.removeItem("tk");$("#app").hidden=true;$("#login").hidden=false}
+async function load(){
+  const d=await api("orders");orders=d.orders;plans=d.plans;
+  const s=await(await fetch("/api/settings")).json();
+  $("#name").value=s.name;$("#title").textContent=s.name;document.title=s.name+" · Owner";
+  $("#login").hidden=true;$("#app").hidden=false;render();
+}
+function render(){
+  const t=new Date().toISOString().slice(0,10),live=orders.filter(o=>o.status!=="Cancelled");
+  $("#sTotal").textContent=peso(live.reduce((a,o)=>a+o.price,0));
+  $("#sMonth").textContent=peso(live.filter(o=>dt(o).startsWith(t.slice(0,7))).reduce((a,o)=>a+o.price,0));
+  $("#sToday").textContent=live.filter(o=>dt(o)===t).length;
+  $("#sSplit").textContent=live.filter(o=>o.plan==="share").length+" / "+live.filter(o=>o.plan==="solo").length;
+  const f=$("#flt").value,rows=orders.filter(o=>!f||o.status===f).slice().reverse();
+  $("#list").innerHTML=rows.length?rows.map(row).join(""):'<div class="empty">No orders yet. Orders appear here when customers send their details.</div>';
+}
+const opt=(o,s)=>'<option'+(s===o.status?' selected':'')+'>'+s+'</option>';
+function row(o){
+  return '<div class="panel">'+
+  '<div class="top"><span>'+esc(o.tg)+'</span><em>'+peso(o.price)+'</em></div>'+
+  '<div class="meta">'+esc((plans[o.plan]&&plans[o.plan].label)||o.plan)+' · '+esc(dt(o))+'</div>'+
+  '<dl><dt>Email</dt><dd>'+esc(o.email)+'</dd><dt>Profile</dt><dd>'+esc(o.profile)+'</dd>'+
+  '<dt>Password</dt><dd><span class="pw" data-pw="'+esc(o.password)+'">tap to show</span></dd>'+
+  '<dt>Device</dt><dd>'+esc(o.device)+'</dd><dt>Location</dt><dd>'+esc(o.loc)+'</dd></dl>'+
+  '<div class="acts"><select data-s="'+esc(o.id)+'">'+["Active","Expired","Cancelled"].map(function(s){return opt(o,s)}).join("")+'</select>'+
+  '<button class="ghost" data-d="'+esc(o.id)+'">Delete</button></div></div>';
+}
+$("#go").onclick=async()=>{
+  $("#err").textContent="";
+  const r=await fetch("/api/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:$("#pw").value})});
+  const d=await r.json();
+  if(!r.ok){$("#err").textContent=d.error==="Wrong password"?"Wrong password. Try again.":"Login failed.";return}
+  tok=d.token;localStorage.setItem("tk",tok);$("#pw").value="";load();
+};
+$("#pw").onkeydown=e=>{if(e.key==="Enter")$("#go").click()};
+$("#out").onclick=logout;
+$("#saveName").onclick=async()=>{await api("name",{name:$("#name").value});$("#title").textContent=$("#name").value||"My Shop"};
+$("#hook").onclick=async()=>{$("#hookmsg").textContent="Connecting...";const d=await api("setwebhook",{});$("#hookmsg").textContent=d.ok?"Bot connected.":"Failed: "+(d.description||"check Netlify variables")};
+$("#flt").onchange=render;
+$("#list").onchange=async e=>{const id=e.target.dataset.s;if(!id)return;await api("status",{id,status:e.target.value});orders.find(o=>o.id===id).status=e.target.value;render()};
+$("#list").onclick=async e=>{
+  if(e.target.dataset.pw!==undefined){e.target.textContent=e.target.dataset.pw;return}
+  const id=e.target.dataset.d;
+  if(id&&confirm("Delete this order?")){await api("delete",{id});orders=orders.filter(o=>o.id!==id);render()}
+};
+$("#csv").onclick=()=>{
+  const q=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
+  const t=[["Date","Telegram","Plan","Price","Email","Profile","Password","Device","Location","Status"].join(",")].concat(
+    orders.map(o=>[dt(o),o.tg,plans[o.plan]?.label,o.price,o.email,o.profile,o.password,o.device,o.loc,o.status].map(q).join(","))).join("\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([t],{type:"text/csv"}));a.download="orders.csv";a.click();
+};
+tok?load().catch(()=>{}):($("#login").hidden=false);
+</script></body></html>
