@@ -27,6 +27,12 @@ export default async (req) => {
     return json({ name: s.name || "My Shop", plans: PLANS });
   }
 
+  if (path === "logo" && req.method === "GET") {
+    const d = await store().get("logo", { type: "json" }).catch(() => null);
+    if (!d) return new Response("", { status: 404 });
+    return new Response(Buffer.from(d.data, "base64"), { headers: { "content-type": "image/png", "cache-control": "no-cache" } });
+  }
+
   if (path === "report" && req.method === "POST") {
     if (body.website) return json({ ok: true });
     const plan = PLANS[body.plan];
@@ -98,6 +104,18 @@ export default async (req) => {
 
   if (path === "name" && req.method === "POST") {
     await store().setJSON("settings", { name: clean(body.name, 40) || "My Shop" });
+    return json({ ok: true });
+  }
+
+  if (path === "logo" && req.method === "POST") {
+    const m = String(body.data || "").match(/^data:image\/png;base64,([A-Za-z0-9+/=]+)$/);
+    if (!m || m[1].length > 400000) return json({ error: "Image is too large or not valid" }, 400);
+    await store().setJSON("logo", { data: m[1] });
+    return json({ ok: true });
+  }
+
+  if (path === "logodel" && req.method === "POST") {
+    await store().delete("logo");
     return json({ ok: true });
   }
 
