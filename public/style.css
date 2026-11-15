@@ -37,3 +37,17 @@ dt{color:var(--dim)}dd{margin:0;word-break:break-all}
 .bar{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
 .bar select,.bar button{margin:0}
 .empty{color:var(--dim);text-align:center;padding:26px}
+textarea{font:inherit;width:100%;min-height:110px;padding:12px;margin:5px 0 8px;background:var(--field);color:var(--ink);border:1px solid transparent;border-radius:4px}
+textarea:focus{outline:0;border-color:#fff}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:4px}
+.brand img{width:44px;height:44px;border-radius:8px}
+.brand h1{margin:0}
+.acts3{display:flex;gap:8px;flex-wrap:wrap}
+.acts3 button{flex:1;min-width:96px}
+.pwshow{margin:8px 0 0;color:var(--dim);word-break:break-all}
+.hint{color:var(--dim);font-size:.88rem;margin:0 0 8px}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.tabs button{margin:0}
+.tabs button.on{background:var(--red);color:#fff}
+.bad{color:#ff6b6b;font-weight:700}
+.soon{color:#ffb020;font-weight:700}
