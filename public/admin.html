@@ -1,17 +1,20 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Owner</title><meta name="robots" content="noindex"><link rel="stylesheet" href="style.css"></head>
+<title>Owner</title><meta name="robots" content="noindex"><link rel="icon" href="logo.svg"><link rel="stylesheet" href="style.css"></head>
 <body><main>
 <section id="login" class="panel" hidden>
-<h1>Owner login</h1>
+<div class="brand"><img src="logo.svg" alt=""><h1>Owner login</h1></div>
 <label>Password<input id="pw" type="password" autocomplete="current-password"></label>
 <button id="go">Log in</button><p id="err"></p>
+<p class="hint">Tip: send /admin to your bot to get a one-tap login link.</p>
 </section>
 <section id="app" hidden>
-<h1 id="title">Tracker</h1>
+<div class="brand"><img src="logo.svg" alt=""><h1 id="title">Tracker</h1></div>
 <div class="panel"><label>Shop name<input id="name" maxlength="40"></label>
 <div class="bar"><button id="saveName">Save name</button><button class="ghost" id="out">Log out</button></div>
 <button class="ghost" id="hook" style="margin-top:8px">Connect Telegram bot</button><p id="hookmsg"></p></div>
+<div class="tabs"><button class="ghost on" id="tO">Orders</button><button class="ghost" id="tS">Stock</button></div>
+<div id="vO">
 <div class="stats">
 <div class="stat"><b id="sTotal">0</b><span>Total sales</span></div>
 <div class="stat"><b id="sMonth">0</b><span>This month</span></div>
@@ -22,14 +25,26 @@
 <select id="flt" aria-label="Filter"><option value="">All</option><option>Active</option><option>Expired</option><option>Cancelled</option></select>
 <button class="ghost" id="csv">Export CSV</button></div>
 <div id="list"></div>
+</div>
+<div id="vS" hidden>
+<div class="panel"><label>Add stock, one account per line<textarea id="stext" placeholder="solo, email@mail.com, password, profile, pin"></textarea></label>
+<p class="hint">Format: plan, email, password, profile, pin. Plan is share or solo. Profile and pin are optional.</p>
+<button id="sadd">Add to stock</button><p id="smsg" class="hint"></p></div>
+<p id="sCount" class="hint"></p>
+<label>Search<input id="sq" placeholder="Username or email"></label>
+<div id="stockList"></div>
+</div>
 </section>
 </main>
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const peso=n=>"₱"+n.toLocaleString();
-let tok=localStorage.getItem("tk")||"",orders=[],plans={};
+const today=()=>new Date().toISOString().slice(0,10);
+let tok=localStorage.getItem("tk")||"",orders=[],plans={},stock=[];
 const dt=o=>o.purchased||new Date(o.created).toISOString().slice(0,10);
+const addMonth=d=>{const x=new Date(d);x.setMonth(x.getMonth()+1);return x.toISOString().slice(0,10)};
+const eff=o=>o.status==="Active"&&addMonth(dt(o))<today()?"Expired":o.status;
 const api=async(p,body)=>{
   const r=await fetch("/api/"+p,{method:body?"POST":"GET",headers:{"content-type":"application/json",authorization:"Bearer "+tok},body:body?JSON.stringify(body):undefined});
   if(r.status===401&&tok){logout();throw 0}
@@ -40,33 +55,58 @@ async function load(){
   const d=await api("orders");orders=d.orders;plans=d.plans;
   const s=await(await fetch("/api/settings")).json();
   $("#name").value=s.name;$("#title").textContent=s.name;document.title=s.name+" · Owner";
-  $("#login").hidden=true;$("#app").hidden=false;render();
+  $("#login").hidden=true;$("#app").hidden=false;render();loadStock();
+}
+function expText(o){
+  const e=addMonth(dt(o)),d=Math.round((new Date(e)-new Date(today()))/864e5);
+  return d<0?'<span class="bad">Expired '+(-d)+'d ago</span>':d<=3?'<span class="soon">Expires in '+d+'d</span>':'Expires '+e;
 }
 function render(){
-  const t=new Date().toISOString().slice(0,10),live=orders.filter(o=>o.status!=="Cancelled");
+  const t=today(),live=orders.filter(o=>o.status!=="Cancelled");
   $("#sTotal").textContent=peso(live.reduce((a,o)=>a+o.price,0));
   $("#sMonth").textContent=peso(live.filter(o=>dt(o).startsWith(t.slice(0,7))).reduce((a,o)=>a+o.price,0));
   $("#sToday").textContent=live.filter(o=>dt(o)===t).length;
   $("#sSplit").textContent=live.filter(o=>o.plan==="share").length+" / "+live.filter(o=>o.plan==="solo").length;
-  const f=$("#flt").value,rows=orders.filter(o=>!f||o.status===f).slice().reverse();
+  const f=$("#flt").value,rows=orders.filter(o=>!f||eff(o)===f).slice().reverse();
   $("#list").innerHTML=rows.length?rows.map(row).join(""):'<div class="empty">No orders yet. Orders appear here when customers send their details.</div>';
 }
-const opt=(o,s)=>'<option'+(s===o.status?' selected':'')+'>'+s+'</option>';
+const opt=(v,s)=>'<option'+(s===v?' selected':'')+'>'+s+'</option>';
 function row(o){
   return '<div class="panel">'+
   '<div class="top"><span>'+esc(o.tg)+'</span><em>'+peso(o.price)+'</em></div>'+
-  '<div class="meta">'+esc((plans[o.plan]&&plans[o.plan].label)||o.plan)+' · '+esc(dt(o))+'</div>'+
+  '<div class="meta">'+esc((plans[o.plan]&&plans[o.plan].label)||o.plan)+' · '+esc(dt(o))+(o.status==="Cancelled"?'':' · '+expText(o))+'</div>'+
   '<dl><dt>Email</dt><dd>'+esc(o.email)+'</dd><dt>Profile</dt><dd>'+esc(o.profile)+'</dd>'+
   '<dt>Password</dt><dd><span class="pw" data-pw="'+esc(o.password)+'">tap to show</span></dd>'+
   '<dt>Device</dt><dd>'+esc(o.device)+'</dd><dt>Location</dt><dd>'+esc(o.loc)+'</dd></dl>'+
-  '<div class="acts"><select data-s="'+esc(o.id)+'">'+["Active","Expired","Cancelled"].map(function(s){return opt(o,s)}).join("")+'</select>'+
+  '<div class="acts"><select data-s="'+esc(o.id)+'">'+["Active","Expired","Cancelled"].map(function(s){return opt(eff(o),s)}).join("")+'</select>'+
   '<button class="ghost" data-d="'+esc(o.id)+'">Delete</button></div></div>';
 }
+async function loadStock(){const d=await api("stock");stock=d.stock;renderStock()}
+function renderStock(){
+  const q=$("#sq").value.toLowerCase();
+  const av=p=>stock.filter(u=>u.plan===p&&u.status==="Available").length;
+  $("#sCount").textContent="Available: Share "+av("share")+" · Solo "+av("solo");
+  const rows=stock.filter(u=>!q||(u.email+" "+(u.buyer||"")).toLowerCase().includes(q)).slice().reverse();
+  $("#stockList").innerHTML=rows.length?rows.map(function(u){
+    return '<div class="panel"><div class="top"><span>'+esc(u.email)+'</span><em>'+esc(u.status)+'</em></div>'+
+    '<div class="meta">'+esc((plans[u.plan]&&plans[u.plan].label)||u.plan)+(u.profile?' · '+esc(u.profile):'')+'</div>'+
+    (u.buyer?'<div class="meta">Sold to '+esc(u.buyer)+' · ref '+esc(u.ref)+' · '+esc(u.sold)+' · expires '+esc(u.expires)+'</div>':'')+
+    '<div class="acts3"><button class="ghost" data-r="'+esc(u.id)+'">Show password</button>'+
+    (u.status==="Sold"?'<button class="ghost" data-x="'+esc(u.id)+'">Replace</button>':'')+
+    '<button class="ghost" data-k="'+esc(u.id)+'">Delete</button></div><p class="pwshow"></p></div>';
+  }).join(""):'<div class="empty">No stock yet. Add accounts above.</div>';
+}
+function tab(t){
+  $("#vO").hidden=t!=="O";$("#vS").hidden=t!=="S";
+  $("#tO").classList.toggle("on",t==="O");$("#tS").classList.toggle("on",t==="S");
+}
+$("#tO").onclick=()=>tab("O");
+$("#tS").onclick=()=>tab("S");
 $("#go").onclick=async()=>{
   $("#err").textContent="";
   const r=await fetch("/api/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:$("#pw").value})});
   const d=await r.json();
-  if(!r.ok){$("#err").textContent=d.error==="Wrong password"?"Wrong password. Try again.":"Login failed.";return}
+  if(!r.ok){$("#err").textContent=d.error||"Login failed.";return}
   tok=d.token;localStorage.setItem("tk",tok);$("#pw").value="";load();
 };
 $("#pw").onkeydown=e=>{if(e.key==="Enter")$("#go").click()};
@@ -74,6 +114,28 @@ $("#out").onclick=logout;
 $("#saveName").onclick=async()=>{await api("name",{name:$("#name").value});$("#title").textContent=$("#name").value||"My Shop"};
 $("#hook").onclick=async()=>{$("#hookmsg").textContent="Connecting...";const d=await api("setwebhook",{});$("#hookmsg").textContent=d.ok?"Bot connected.":"Failed: "+(d.description||"check Netlify variables")};
 $("#flt").onchange=render;
+$("#sq").oninput=renderStock;
+$("#sadd").onclick=async()=>{
+  $("#smsg").textContent="Adding...";
+  const d=await api("stockadd",{text:$("#stext").value});
+  if(d.error){$("#smsg").textContent=d.error;return}
+  $("#smsg").textContent="Added "+d.added+(d.skipped?", skipped "+d.skipped+" (check the format)":"");
+  if(d.added)$("#stext").value="";
+  loadStock();
+};
+$("#stockList").onclick=async e=>{
+  const t=e.target.dataset;
+  if(t.r){
+    const d=await api("reveal",{id:t.r});
+    e.target.closest(".panel").querySelector(".pwshow").textContent=d.password?"Password: "+d.password+(d.pin?" · PIN: "+d.pin:""):(d.error||"");
+  }else if(t.x){
+    if(!confirm("Send this customer a replacement account?"))return;
+    const d=await api("replace",{id:t.x});
+    alert(d.ok?"Replacement sent.":(d.error||"Failed"));loadStock();
+  }else if(t.k){
+    if(confirm("Delete this account from stock?")){await api("stockdel",{id:t.k});loadStock()}
+  }
+};
 $("#list").onchange=async e=>{const id=e.target.dataset.s;if(!id)return;await api("status",{id,status:e.target.value});orders.find(o=>o.id===id).status=e.target.value;render()};
 $("#list").onclick=async e=>{
   if(e.target.dataset.pw!==undefined){e.target.textContent=e.target.dataset.pw;return}
@@ -83,8 +145,14 @@ $("#list").onclick=async e=>{
 $("#csv").onclick=()=>{
   const q=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
   const t=[["Date","Telegram","Plan","Price","Email","Profile","Password","Device","Location","Status"].join(",")].concat(
-    orders.map(o=>[dt(o),o.tg,plans[o.plan]?.label,o.price,o.email,o.profile,o.password,o.device,o.loc,o.status].map(q).join(","))).join("\n");
+    orders.map(o=>[dt(o),o.tg,plans[o.plan]?.label,o.price,o.email,o.profile,o.password,o.device,o.loc,eff(o)].map(q).join(","))).join("\n");
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([t],{type:"text/csv"}));a.download="orders.csv";a.click();
 };
-tok?load().catch(()=>{}):($("#login").hidden=false);
+const h=location.hash.match(/^#t=([a-f0-9]+)$/);
+if(h){
+  history.replaceState(null,"",location.pathname);
+  fetch("/api/tglogin",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({t:h[1]})})
+    .then(r=>r.json()).then(d=>{if(d.token){tok=d.token;localStorage.setItem("tk",tok);load()}else{$("#login").hidden=false;$("#err").textContent="Link expired. Send /admin to the bot again."}})
+    .catch(()=>{$("#login").hidden=false});
+}else tok?load().catch(()=>{}):($("#login").hidden=false);
 </script></body></html>
