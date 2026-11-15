@@ -3,15 +3,17 @@
 <title>Owner</title><meta name="robots" content="noindex"><link rel="icon" href="logo.svg"><link rel="stylesheet" href="style.css"></head>
 <body><main>
 <section id="login" class="panel" hidden>
-<div class="brand"><img src="logo.svg" alt=""><h1>Owner login</h1></div>
+<div class="brand"><img src="/api/logo" alt="" onerror="this.onerror=null;this.src='logo.svg'"><h1>Owner login</h1></div>
 <label>Password<input id="pw" type="password" autocomplete="current-password"></label>
 <button id="go">Log in</button><p id="err"></p>
 <p class="hint">Tip: send /admin to your bot to get a one-tap login link.</p>
 </section>
 <section id="app" hidden>
-<div class="brand"><img src="logo.svg" alt=""><h1 id="title">Tracker</h1></div>
+<div class="brand"><img src="/api/logo" alt="" onerror="this.onerror=null;this.src='logo.svg'"><h1 id="title">Tracker</h1></div>
 <div class="panel"><label>Shop name<input id="name" maxlength="40"></label>
 <div class="bar"><button id="saveName">Save name</button><button class="ghost" id="out">Log out</button></div>
+<label>Logo<input id="logoFile" type="file" accept="image/*"></label>
+<p id="logomsg" class="hint">Pick an image to replace the logo. <span class="pw" id="logoReset">Reset to default</span></p>
 <button class="ghost" id="hook" style="margin-top:8px">Connect Telegram bot</button><p id="hookmsg"></p></div>
 <div class="tabs"><button class="ghost on" id="tO">Orders</button><button class="ghost" id="tS">Stock</button></div>
 <div id="vO">
@@ -148,6 +150,22 @@ $("#csv").onclick=()=>{
     orders.map(o=>[dt(o),o.tg,plans[o.plan]?.label,o.price,o.email,o.profile,o.password,o.device,o.loc,eff(o)].map(q).join(","))).join("\n");
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([t],{type:"text/csv"}));a.download="orders.csv";a.click();
 };
+function setLogo(){document.querySelectorAll(".brand img").forEach(function(i){i.onerror=function(){this.onerror=null;this.src="logo.svg"};i.src="/api/logo?"+Date.now()})}
+$("#logoFile").onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  const img=new Image(),url=URL.createObjectURL(f);
+  img.onload=async()=>{
+    const w=img.width||256,h=img.height||256,s=Math.min(1,256/Math.max(w,h));
+    const c=document.createElement("canvas");c.width=Math.round(w*s);c.height=Math.round(h*s);
+    c.getContext("2d").drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);
+    const d=await api("logo",{data:c.toDataURL("image/png")});
+    $("#logomsg").textContent=d.ok?"Logo updated.":(d.error||"Failed");
+    if(d.ok)setLogo();
+  };
+  img.onerror=()=>{$("#logomsg").textContent="Could not read that image."};
+  img.src=url;
+};
+$("#logoReset").onclick=async()=>{await api("logodel",{});$("#logomsg").textContent="Logo reset to default.";setLogo()};
 const h=location.hash.match(/^#t=([a-f0-9]+)$/);
 if(h){
   history.replaceState(null,"",location.pathname);
